@@ -1,0 +1,100 @@
+#importing the necessary libraries
+import serial
+import csv
+import time
+from flask import Flask, jsonify
+import threading
+import serial.tools.list_ports
+#creating an instance of the Flask class
+app = Flask(__name__)
+
+# Function to read data from the CSV file
+def read_csv():
+    #Creates list to store retrieved data
+    data = []
+    try:
+        #Opens the CSV file in read mode
+        with open('c:/Users/jason/OneDrive/Documents1/GitHub/Website/MasterFolder/Documents1/Clubs/Buckeye_Solar_Racing/pythonSerialRead/data.csv', mode='r') as file:
+            reader = csv.reader(file)
+            #Reads the data
+            for row in reader:
+                data.append(row)
+    except Exception as e:
+        print(f"Error reading from the csv file: {e}")
+    return data
+
+# Function to simulate updating data from the CSV file
+def update_data():
+    global cached_data, current_row
+    try:
+        data = read_csv()
+        # Update the cached data with the next two rows
+        if current_row < len(data):
+            cached_data = data[current_row:current_row + 2]
+            print('Data updated:', cached_data)
+            current_row += 2
+        else: print("No more data to read")
+    except Exception as e:
+        print('Error updating data:', e)
+
+# Initialize cached data and current row
+cached_data = None
+current_row = 0
+
+# Update data every 2 seconds
+def start_data_update():
+    while True:
+        update_data()
+        time.sleep(2)
+
+# Start the data update in a separate thread
+threading.Thread(target=start_data_update, daemon=True).start()
+
+def read_data_from_file():
+    with open('c:/Users/jason/OneDrive/Documents1/GitHub/Website/MasterFolder/Documents1/Clubs/Buckeye_Solar_Racing/pythonSerialRead/data.csv', mode='a', newline='') as file:
+        writer = csv.writer(file)
+        while True:
+            time.sleep(1)
+            if serialConnection and serialConnection.in_waiting > 0:
+                line = serialConnection.readline().decode('utf-8').strip()
+                print(f"Read from serial: {line}")
+                writer.writerow([line])
+                file.flush()  # Ensure data is written to the file immediately
+
+#Flask Routes
+@app.route('/')
+def home():
+    return 'Hello from the backend'
+
+@app.route('/api/data', methods=['GET'])
+def get_data():
+    if cached_data:
+        return jsonify({'data': cached_data})
+    else:
+        return 'Data not available', 500
+
+#Main method
+if __name__ == "__main__":
+    # List available serial ports
+    ports = list(serial.tools.list_ports.comports())
+    if not ports:
+        print("No serial ports found.")
+    else:
+        print("Available serial ports:")
+        for i, p in enumerate(ports):
+            print(f"{i}: {p}")
+
+        # Prompt user to select the correct port
+        port_index = int(input("Select the serial port index: "))
+        selected_port = ports[port_index].device
+
+        # Set up the serial connection
+        try:
+            serialConnection = serial.Serial(selected_port, 115200)
+            threading.Thread(target=read_data_from_file, daemon=True).start()
+        except serial.SerialException as e:
+            print(f"Error opening serial connection: {e}")
+            serialConnection = None
+
+    if serialConnection:
+        app.run(debug=True, port=5000)
